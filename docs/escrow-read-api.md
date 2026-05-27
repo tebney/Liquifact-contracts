@@ -163,3 +163,31 @@ Returns the single-set 32-byte attestation digest, or `None` when unbound.
 
 Returns the append-only audit chain of digests. Returns an empty `Vec` when no entries exist.
 Bounded by `MAX_ATTESTATION_APPEND_ENTRIES`.
+
+---
+
+## `get_escrow_summary() → EscrowSummary`
+
+Bundles multiple read-only values in a single host invocation, optimizing read latency and gas efficiency for off-chain indexers and frontend rendering.
+
+- **Pure Read** — view-only (no authorization required, no state writes).
+- **Safe Fallback** — matches individual getters exactly, returning defaults when optional keys are absent, and does not panic unless the escrow itself is uninitialized.
+
+### Return Type: `EscrowSummary`
+
+A `#[contracttype]` struct containing:
+
+- `escrow: InvoiceEscrow` — The full escrow snapshot.
+- `legal_hold: bool` — True if a compliance hold is active.
+- `funding_close_snapshot: EscrowCloseSnapshot` — Custom option-like representation of the captured pro-rata denominator snapshot (detailed below).
+- `unique_funder_count: u32` — Distinct address count of contributors.
+- `is_allowlist_active: bool` — True if the investor allowlist is active.
+- `schema_version: u32` — The schema version of the contract state.
+
+### Sub-type: `EscrowCloseSnapshot`
+
+A `#[contracttype]` enum representing the optional `FundingCloseSnapshot`:
+
+- `None` — Escrow is not yet funded; no close snapshot exists.
+- `Some(FundingCloseSnapshot)` — The pro-rata denominator snapshot captured when the escrow first transitioned to **funded**.
+
