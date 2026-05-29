@@ -1360,7 +1360,15 @@ impl LiquifactEscrow {
     /// The configured **SME** address must authorize this call.
     ///
     /// Blocked while [`DataKey::LegalHold`] is active.
-    pub fn partial_settle(env: Env) -> InvoiceEscrow {
+    /// Closes funding early for an under-funded invoice, transitioning the escrow to a settleable state.
+    ///
+    /// # Authorization
+    /// The configured **SME** or **Admin** address must authorize this call.
+    ///
+    /// Blocked while [`DataKey::LegalHold`] is active.
+    pub fn partial_settle(env: Env, caller: Address) -> InvoiceEscrow {
+        caller.require_auth();
+
         assert!(
             !Self::legal_hold_active(&env),
             "Legal hold blocks partial settlement"
@@ -1368,7 +1376,10 @@ impl LiquifactEscrow {
 
         let mut escrow = Self::get_escrow(env.clone());
 
-        escrow.sme_address.require_auth();
+        assert!(
+            caller == escrow.sme_address || caller == escrow.admin,
+            "Unauthorized caller for partial settlement"
+        );
 
         assert!(
             escrow.status == 0,
@@ -1402,6 +1413,7 @@ impl LiquifactEscrow {
 
         escrow
     }
+
 
     pub fn settle(env: Env) -> InvoiceEscrow {
         assert!(

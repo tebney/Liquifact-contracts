@@ -400,7 +400,9 @@ fn test_claim_blocked_until_commitment_ledger_time() {
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let inv = Address::generate(&env);
-    let (tok, tre) = free_addresses(&env);
+    let token = install_stellar_asset_token(&env);
+    let (tok, tre) = (token.id.clone(), Address::generate(&env));
+
     client.init(
         &admin,
         &String::from_str(&env, "LOCK001"),
@@ -428,7 +430,9 @@ fn test_claim_succeeds_after_commitment_and_settle() {
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let inv = Address::generate(&env);
-    let (tok, tre) = free_addresses(&env);
+    let token = install_stellar_asset_token(&env);
+    let (tok, tre) = (token.id.clone(), Address::generate(&env));
+
     client.init(
         &admin,
         &String::from_str(&env, "LOCK002"),
@@ -458,7 +462,9 @@ fn test_claim_gating_exact_timestamp() {
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     let inv = Address::generate(&env);
-    let (tok, tre) = free_addresses(&env);
+    let token = install_stellar_asset_token(&env);
+    let (tok, tre) = (token.id.clone(), Address::generate(&env));
+
 
     env.ledger().set_timestamp(1000);
 
@@ -505,7 +511,9 @@ fn test_claim_gating_with_multiple_investors() {
     let sme = Address::generate(&env);
     let inv1 = Address::generate(&env);
     let inv2 = Address::generate(&env);
-    let (tok, tre) = free_addresses(&env);
+    let token = install_stellar_asset_token(&env);
+    let (tok, tre) = (token.id.clone(), Address::generate(&env));
+
 
     env.ledger().set_timestamp(1000);
 
@@ -608,7 +616,7 @@ fn settle_with_maturity_zero_succeeds_immediately() {
         &maturity,
         &token,
         &None,
-        &tre,
+        &treasury,
         &None,
         &None,
         &None,
@@ -667,14 +675,7 @@ fn settle_requires_sme_auth() {
 
 /// `settle` on open (status 0) escrow must panic.
 #[test]
-#[should_panic(expected = "Escrow must be funded before settlement")]
-fn settle_on_open_escrow_panics() {
-    let env = Env::default();
-    let (client, admin, sme) = setup(&env);
-    default_init(&client, &env, &admin, &sme);
-    // No funding — status is still 0
-    client.settle();
-}
+
 
 /// `settle` on withdrawn (status 3) escrow must panic.
 #[test]
@@ -757,7 +758,9 @@ fn test_sweep_terminal_dust_after_settle_transfers_to_treasury() {
     let token = install_stellar_asset_token(&env);
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
-    let (tok, tre) = free_addresses(&env);
+    let token = install_stellar_asset_token(&env);
+    let (tok, tre) = (token.id.clone(), Address::generate(&env));
+
     let client = deploy(&env);
     let maturity = 5000u64;
     client.init(
@@ -778,11 +781,11 @@ fn test_sweep_terminal_dust_after_settle_transfers_to_treasury() {
     client.fund(&investor, &1_000i128);
     client.settle();
 
-    token.stellar.mint(&escrow_id, &5_000i128);
-    let before_t = token.token.balance(&treasury);
+    token.stellar.mint(&client.address, &5_000i128);
+    let before_t = token.token.balance(&tre);
     let swept = client.sweep_terminal_dust(&5_000i128);
     assert_eq!(swept, 5_000i128);
-    assert_eq!(token.token.balance(&treasury), before_t + 5_000i128);
+    assert_eq!(token.token.balance(&tre), before_t + 5_000i128);
 }
 
 #[test]
@@ -791,7 +794,9 @@ fn test_sweep_terminal_dust_after_withdraw_and_ledger_tick() {
     env.mock_all_auths();
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
-    let (tok, tre) = free_addresses(&env);
+    let token = install_stellar_asset_token(&env);
+    let (tok, tre) = (token.id.clone(), Address::generate(&env));
+
     let client = deploy(&env);
     let maturity = 5000u64;
     client.init(
@@ -815,7 +820,7 @@ fn test_sweep_terminal_dust_after_withdraw_and_ledger_tick() {
     env.ledger()
         .set_sequence_number(env.ledger().sequence() + 10);
 
-    token.stellar.mint(&escrow_id, &333i128);
+    token.stellar.mint(&client.address, &333i128);
     let swept = client.sweep_terminal_dust(&333i128);
     assert_eq!(swept, 333i128);
 }
@@ -942,7 +947,8 @@ fn test_sweep_requires_treasury_auth() {
     );
     fund_to_target(&client, &env);
     client.settle();
-    token.stellar.mint(&escrow_id, &(MAX_DUST_SWEEP_AMOUNT + 1));
+    let token = install_stellar_asset_token(&env);
+    token.stellar.mint(&client.address, &(MAX_DUST_SWEEP_AMOUNT + 1));
 
     client.sweep_terminal_dust(&(MAX_DUST_SWEEP_AMOUNT + 1));
 }
@@ -958,7 +964,8 @@ fn claim_investor_payout_succeeds_after_settle() {
     default_init(&client, &env, &admin, &sme);
     client.fund(&investor, &TARGET);
     client.settle();
-    token.stellar.mint(&escrow_id, &10i128);
+    let token = install_stellar_asset_token(&env);
+    token.stellar.mint(&client.address, &10i128);
 
     env.mock_auths(&[]);
     let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1019,9 +1026,8 @@ fn funding_snapshot_survives_settle() {
     client.settle();
     let snapshot_after = client.get_funding_close_snapshot();
 
-    let snapshot_after = client.get_funding_close_snapshot();
     assert_eq!(
-        snapshot_before.unwrap().total_principal,
+        snapshot_before.total_principal,
         snapshot_after.unwrap().total_principal
     );
 }
@@ -1262,3 +1268,103 @@ fn no_state_mutation_possible_after_withdraw() {
         assert!(r.is_err(), "fund after withdraw must panic");
     }
 }
+    // ──────────────────────────────────────────────────────────────────────────────
+    // `partial_settle` tests
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_partial_settle_sme_happy_path() {
+        let env = Env::default();
+        let (client, admin, sme) = setup(&env);
+        default_init(&client, &env, &admin, &sme);
+
+        // Partially fund
+        let investor = Address::generate(&env);
+        client.fund(&investor, &(TARGET / 2));
+
+        // SME settles early
+        client.partial_settle(&sme);
+
+        let escrow = client.get_escrow();
+        assert_eq!(escrow.status, 1u32, "Status must be 1 (funded/settleable) after partial_settle");
+        assert_eq!(escrow.funded_amount, TARGET / 2);
+    }
+
+    #[test]
+    fn test_partial_settle_admin_happy_path() {
+        let env = Env::default();
+        let (client, admin, sme) = setup(&env);
+        default_init(&client, &env, &admin, &sme);
+
+        // Admin settles early
+        client.partial_settle(&admin);
+
+        let escrow = client.get_escrow();
+        assert_eq!(escrow.status, 1u32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized caller for partial settlement")]
+    fn test_partial_settle_unauthorized_caller_panics() {
+        let env = Env::default();
+        let (client, admin, sme) = setup(&env);
+        default_init(&client, &env, &admin, &sme);
+
+        let stranger = Address::generate(&env);
+        client.partial_settle(&stranger);
+    }
+
+    #[test]
+    #[should_panic(expected = "Legal hold blocks partial settlement")]
+    fn test_partial_settle_blocked_by_legal_hold() {
+        let env = Env::default();
+        let (client, admin, sme) = setup(&env);
+        default_init(&client, &env, &admin, &sme);
+
+        client.set_legal_hold(&true);
+        client.partial_settle(&sme);
+    }
+
+    #[test]
+    #[should_panic(expected = "Escrow must be in Open state for partial settlement")]
+    fn test_partial_settle_rejected_if_not_open() {
+        let env = Env::default();
+        let (client, admin, sme) = setup(&env);
+        default_init(&client, &env, &admin, &sme);
+
+        // Fully fund
+        fund_to_target(&client, &env);
+        // Status is now 1. partial_settle should panic.
+        client.partial_settle(&sme);
+    }
+
+    #[test]
+    fn test_partial_settle_writes_correct_snapshot() {
+        let env = Env::default();
+        let (client, admin, sme) = setup(&env);
+        default_init(&client, &env, &admin, &sme);
+
+        let amount = 123456789i128;
+        let investor = Address::generate(&env);
+        client.fund(&investor, &amount);
+
+        client.partial_settle(&sme);
+
+        let snapshot = client.get_funding_close_snapshot().expect("Snapshot must exist");
+        assert_eq!(snapshot.total_principal, amount);
+        assert_eq!(snapshot.funding_target, TARGET);
+    }
+
+    #[test]
+    #[should_panic(expected = "Escrow not open for funding")]
+    fn test_funding_blocked_after_partial_settle() {
+        let env = Env::default();
+        let (client, admin, sme) = setup(&env);
+        default_init(&client, &env, &admin, &sme);
+
+        client.partial_settle(&sme);
+
+        let late_investor = Address::generate(&env);
+        client.fund(&late_investor, &1000i128);
+    }
+

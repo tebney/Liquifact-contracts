@@ -36,7 +36,11 @@ To ensure protocol solvency and prevent "penny-bleeding" attacks, integrators sh
 ## ⚠️ Security Notes
 
 ### Pro-rata Denominator Stability
-The `FundingCloseSnapshot` is **immutable** once written. Even if the SME withdraws a partial amount or more funds are somehow transferred to the contract, the pro-rata denominator remains fixed to ensure predictable payouts.
+The `FundingCloseSnapshot` is **immutable** once written. It is captured in two scenarios:
+1.  **Full Funding**: Automatically written when `funded_amount >= funding_target`.
+2.  **Partial Settlement**: Explicitly written by an Admin or SME via `partial_settle` for under-funded invoices.
+
+Once captured, the pro-rata denominator remains fixed even if the SME withdraws a partial amount or more funds are somehow transferred to the contract. This ensures predictable payouts regardless of how the funding phase ended.
 
 ### Integer Overflow
 When implementing off-chain in JS/Python, ensure you are using libraries that handle large integers (e.g., `BigInt` in JS) to prevent overflow during the `Contribution * TotalSettle` multiplication step before division.
