@@ -23,6 +23,7 @@ fn test_init_stores_escrow() {
         &None,
         &None,
         &None,
+        &None,
     );
     assert_eq!(escrow.invoice_id, symbol_short!("INV001"));
     assert_eq!(escrow.admin, admin);
@@ -53,6 +54,7 @@ fn test_init_stores_keyed_invoice_and_lists_it() {
         &None,
         &None,
         &None,
+        &None,
     );
     let got = client.get_escrow();
     assert_eq!(got, escrow);
@@ -72,6 +74,7 @@ fn test_init_requires_admin_auth() {
         &Address::generate(&env),
         &None,
         &Address::generate(&env),
+        &None,
         &None,
         &None,
         &None,
@@ -100,6 +103,7 @@ fn test_init_unauthorized_panics() {
             &Address::generate(&env),
             &None,
             &Address::generate(&env),
+            &None,
             &None,
             &None,
             &None,
@@ -144,6 +148,7 @@ fn test_cost_baseline_init() {
         &None,
         &None,
         &None,
+        &None,
     );
 }
 
@@ -165,6 +170,7 @@ fn test_cost_baseline_init_zero_maturity() {
         &None,
         &None,
         &None,
+        &None,
     );
 }
 
@@ -182,6 +188,7 @@ fn test_cost_baseline_init_max_amount() {
         &Address::generate(&env),
         &None,
         &Address::generate(&env),
+        &None,
         &None,
         &None,
         &None,
@@ -212,6 +219,7 @@ fn test_init_invoice_id_empty_string_panics() {
         &None,
         &None,
         &None,
+        &None,
     );
 }
 
@@ -234,6 +242,7 @@ fn test_init_invoice_id_whitespace_panics() {
         &t,
         &None,
         &tr,
+        &None,
         &None,
         &None,
         &None,
@@ -265,6 +274,7 @@ fn test_init_invoice_id_too_long_panics() {
         &None,
         &None,
         &None,
+        &None,
     );
 }
 
@@ -287,6 +297,7 @@ fn test_init_invoice_id_bad_charset_hyphen_panics() {
         &t,
         &None,
         &tr,
+        &None,
         &None,
         &None,
         &None,
@@ -373,6 +384,7 @@ fn test_init_stores_registry_some_and_getters() {
         &None,
         &None,
         &None,
+        &None,
     );
     assert_eq!(client.get_registry_ref(), Some(reg));
     assert_eq!(client.get_funding_token(), token);
@@ -404,6 +416,7 @@ fn test_init_min_contribution_floor_stored() {
         &Some(1_000i128),
         &None,
         &None,
+        &None,
     );
     assert_eq!(client.get_min_contribution_floor(), 1_000i128);
 }
@@ -427,6 +440,7 @@ fn test_init_min_contribution_floor_defaults_to_zero() {
         &tok,
         &None,
         &tre,
+        &None,
         &None,
         &None,
         &None,
@@ -459,6 +473,7 @@ fn test_init_min_contribution_zero_panics() {
         &Some(0i128),
         &None,
         &None,
+        &None,
     );
 }
 
@@ -486,6 +501,7 @@ fn test_init_min_contribution_exceeds_amount_panics() {
         &Some(1_001i128),
         &None,
         &None,
+        &None,
     );
 }
 
@@ -510,6 +526,7 @@ fn test_init_min_contribution_equal_to_amount_accepted() {
         &tre,
         &None,
         &Some(5_000i128),
+        &None,
         &None,
         &None,
     );
@@ -562,6 +579,7 @@ fn test_init_registry_none_roundtrip() {
         &None,
         &None,
         &None,
+        &None,
     );
     assert_eq!(client.get_registry_ref(), None);
 }
@@ -590,6 +608,7 @@ fn test_init_escrow_initialized_event_includes_bound_refs() {
         &token,
         &Some(registry.clone()),
         &treasury,
+        &None,
         &None,
         &None,
         &None,
@@ -637,6 +656,7 @@ fn test_init_escrow_initialized_event_registry_none() {
         &None,
         &None,
         &None,
+        &None,
     );
 
     assert_eq!(
@@ -675,6 +695,7 @@ fn try_init_with_id(env: &Env, id: &str) -> Result<(), ()> {
             &t,
             &None,
             &tr,
+            &None,
             &None,
             &None,
             &None,
@@ -721,6 +742,7 @@ fn test_invoice_id_length_33_panics() {
         &t,
         &None,
         &tr,
+        &None,
         &None,
         &None,
         &None,
