@@ -1895,13 +1895,11 @@ impl LiquifactEscrow {
     /// terminates with a typed contract error (aborts the Soroban transaction). This is intentional:
     /// it makes the "no migration" guarantee explicit rather than silently returning success.
     ///
-    /// **Execution order:** the function first reads [`DataKey::Version`] from instance
-    /// storage, validates the supplied `from_version`, then emits a typed error. No storage
-    /// writes ever occur; the storage read is read-only and side-effect-free. There is
-    /// **no [`Address::require_auth`] call** — any account may invoke `migrate`. This is
-    /// safe only because a typed error is reached on every code path and no state
-    /// is mutated. Adding migration logic without also adding an auth guard would make
-    /// this entrypoint callable by any account.
+    /// **Execution order:** the function first requires current admin authorization, then reads
+    /// [`DataKey::Version`] from instance storage, validates the supplied `from_version`, and emits
+    /// a typed error. No storage writes ever occur in the current release. The authorization guard
+    /// is intentionally placed before version checks so future migration logic remains admin-gated
+    /// by construction.
     ///
     /// Do **not** call `migrate` expecting it to perform bookkeeping work in the current
     /// release. To add a real migration path (e.g. rewriting a stored struct after a field
@@ -1918,6 +1916,8 @@ impl LiquifactEscrow {
     ///
     /// # Errors
     ///
+    /// Requires current admin authorization before any version checks or future storage rewrites.
+    ///
     /// | Condition | Typed error |
     /// |-----------|--------|
     /// | `stored_version != from_version` | [`EscrowError::MigrationVersionMismatch`] |
@@ -1927,6 +1927,8 @@ impl LiquifactEscrow {
     /// See `docs/OPERATOR_RUNBOOK.md` §2 for step-by-step instructions on implementing
     /// a concrete migration path.
     pub fn migrate(env: Env, from_version: u32) -> u32 {
+        Self::get_escrow(env.clone()).admin.require_auth();
+
         let stored: u32 = env.storage().instance().get(&DataKey::Version).unwrap_or(0);
 
         ensure(

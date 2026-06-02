@@ -77,6 +77,8 @@ Do **not** bump `SCHEMA_VERSION` for:
 // for a same-instance migration when only a primitive flag changes.
 
 pub fn migrate(env: Env, from_version: u32) -> u32 {
+    Self::get_escrow(env.clone()).admin.require_auth();
+
     let stored: u32 = env.storage().instance().get(&DataKey::Version).unwrap_or(0);
     assert!(stored == from_version, "from_version does not match stored version");
     if from_version >= SCHEMA_VERSION {
@@ -99,7 +101,10 @@ pub fn migrate(env: Env, from_version: u32) -> u32 {
 ```
 
 **Current state (v6):** `migrate()` panics on **all** paths. No migration
-work is implemented. Operators must redeploy if `InvoiceEscrow` layout changes.
+work is implemented. The entrypoint is admin-gated before version checks so any
+future storage-mutating migration path is authenticated by construction.
+See [ADR-007](adr/ADR-007-storage-key-evolution.md) for the storage-key
+evolution policy. Operators must redeploy if `InvoiceEscrow` layout changes.
 
 ---
 
