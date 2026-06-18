@@ -241,7 +241,8 @@ fn sweep_liability_floor_allows_true_dust_after_all_refunded() {
     let (client, admin, sme) = setup(&env);
     let investor = Address::generate(&env);
     let fund_amount = 1_000i128;
-    let (token, treasury) = setup_cancelled_with_token(&env, &client, &admin, &sme, &investor, fund_amount);
+    let (token, treasury) =
+        setup_cancelled_with_token(&env, &client, &admin, &sme, &investor, fund_amount);
 
     // Mint 1 extra unit of dust on top of the principal
     token.stellar.mint(&client.address, &1i128);
@@ -267,7 +268,8 @@ fn sweep_liability_floor_blocks_sweep_when_investor_not_yet_refunded() {
     let (client, admin, sme) = setup(&env);
     let investor = Address::generate(&env);
     let fund_amount = 1_000i128;
-    let (token, _treasury) = setup_cancelled_with_token(&env, &client, &admin, &sme, &investor, fund_amount);
+    let (token, _treasury) =
+        setup_cancelled_with_token(&env, &client, &admin, &sme, &investor, fund_amount);
 
     // balance == outstanding == 1000; sweep of even 1 unit violates the floor
     client.sweep_terminal_dust(&1i128);

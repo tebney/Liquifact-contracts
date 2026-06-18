@@ -1155,6 +1155,34 @@ impl LiquifactEscrow {
             .unwrap_or_else(|| fail(&env, EscrowError::EscrowNotInitialized))
     }
 
+    /// Load the current escrow and require admin authorization in one step.
+    ///
+    /// Consolidates the repeated `let escrow = Self::get_escrow(env.clone()); escrow.admin.require_auth();`
+    /// pattern used across multiple admin-gated entrypoints.
+    fn load_escrow_require_admin(env: &Env) -> InvoiceEscrow {
+        let escrow: InvoiceEscrow = env
+            .storage()
+            .instance()
+            .get(&DataKey::Escrow)
+            .unwrap_or_else(|| fail(env, EscrowError::EscrowNotInitialized));
+        escrow.admin.require_auth();
+        escrow
+    }
+
+    /// Load the current escrow and require SME authorization in one step.
+    ///
+    /// Consolidates the repeated `let escrow = Self::get_escrow(env.clone()); escrow.sme_address.require_auth();`
+    /// pattern used across multiple SME-gated entrypoints.
+    fn load_escrow_require_sme(env: &Env) -> InvoiceEscrow {
+        let escrow: InvoiceEscrow = env
+            .storage()
+            .instance()
+            .get(&DataKey::Escrow)
+            .unwrap_or_else(|| fail(env, EscrowError::EscrowNotInitialized));
+        escrow.sme_address.require_auth();
+        escrow
+    }
+
     pub fn get_version(env: Env) -> u32 {
         env.storage().instance().get(&DataKey::Version).unwrap_or(0)
     }
@@ -1255,9 +1283,7 @@ impl LiquifactEscrow {
     /// Emits typed [`EscrowError`] codes when the escrow is uninitialized or the primary digest has
     /// already been bound.
     pub fn bind_primary_attestation_hash(env: Env, digest: BytesN<32>) {
-        // env.clone(): env is used again after this call for storage has/set and publish.
-        let escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
         ensure(
             &env,
             !env.storage()
@@ -1288,9 +1314,7 @@ impl LiquifactEscrow {
     /// # Errors
     /// Emits typed [`EscrowError`] codes when the escrow is uninitialized or the append log is full.
     pub fn append_attestation_digest(env: Env, digest: BytesN<32>) {
-        // env.clone(): env is used again after this call for storage get/set and publish.
-        let escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
 
         let mut log: Vec<BytesN<32>> = env
             .storage()
@@ -1444,8 +1468,7 @@ impl LiquifactEscrow {
         );
 
         // env.clone(): env is used again after this call for storage read/write, timestamp, and publish.
-        let escrow = Self::get_escrow(env.clone());
-        escrow.sme_address.require_auth();
+        let escrow = Self::load_escrow_require_sme(&env);
 
         let now = env.ledger().timestamp();
         let prior: Option<SmeCollateralCommitment> =
@@ -1492,9 +1515,7 @@ impl LiquifactEscrow {
     /// `propose_admin`, `accept_admin`, then `clear_legal_hold`. See
     /// `docs/escrow-legal-hold.md`.
     pub fn set_legal_hold(env: Env, active: bool) {
-        // env.clone(): env is used again after this call for storage set and publish.
-        let escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
 
         if !active && Self::legal_hold_active(&env) {
             let delay = Self::get_legal_hold_clear_delay(env.clone());
@@ -1534,9 +1555,7 @@ impl LiquifactEscrow {
     /// If a non-zero clear delay is configured, the hold may not be lifted until the
     /// returned ledger timestamp is reached.
     pub fn request_clear_legal_hold(env: Env) {
-        // env.clone(): env is used again after this call for storage set and publish.
-        let escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
 
         let now = env.ledger().timestamp();
         let delay = Self::get_legal_hold_clear_delay(env.clone());
@@ -1562,8 +1581,7 @@ impl LiquifactEscrow {
     /// Enable or disable the investor allowlist. When enabled, only addresses with
     /// [`DataKey::InvestorAllowlisted`] set to true may fund the escrow.
     pub fn set_allowlist_active(env: Env, active: bool) {
-        let escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
         env.storage()
             .instance()
             .set(&DataKey::AllowlistActive, &active);
@@ -1584,8 +1602,7 @@ impl LiquifactEscrow {
 
     /// Add or remove an investor from the allowlist.
     pub fn set_investor_allowlisted(env: Env, investor: Address, allowed: bool) {
-        let escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
         env.storage()
             .persistent()
             .set(&DataKey::InvestorAllowlisted(investor.clone()), &allowed);
@@ -1612,9 +1629,7 @@ impl LiquifactEscrow {
     /// Emits typed [`EscrowError`] codes when the escrow is uninitialized, the batch is empty, or
     /// the batch exceeds [`MAX_INVESTOR_ALLOWLIST_BATCH`].
     pub fn set_investors_allowlisted(env: Env, investors: Vec<Address>, allowed: bool) {
-        // env.clone(): env is used again after this call for storage writes and publish.
-        let escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
 
         let n = investors.len();
         assert!(n > 0, "investors vector must be non-empty");
@@ -1653,9 +1668,7 @@ impl LiquifactEscrow {
     }
 
     pub fn update_funding_target(env: Env, new_target: i128) -> InvoiceEscrow {
-        // env.clone(): env is used again after this call for storage set and publish.
-        let mut escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let mut escrow = Self::load_escrow_require_admin(&env);
 
         ensure(&env, new_target > 0, EscrowError::TargetNotPositive);
         ensure(&env, escrow.status == 0, EscrowError::TargetUpdateNotOpen);
@@ -1693,8 +1706,7 @@ impl LiquifactEscrow {
     /// - If `new_cap` is not strictly lower than the current cap.
     /// - If `new_cap` is below the current unique funder count.
     pub fn lower_max_unique_investors(env: Env, new_cap: u32) -> u32 {
-        let escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
 
         assert!(escrow.status == 0, "Cap can only be lowered in Open state");
 
@@ -1769,7 +1781,7 @@ impl LiquifactEscrow {
     /// See `docs/OPERATOR_RUNBOOK.md` §2 for step-by-step instructions on implementing
     /// a concrete migration path.
     pub fn migrate(env: Env, from_version: u32) -> u32 {
-        Self::get_escrow(env.clone()).admin.require_auth();
+        Self::load_escrow_require_admin(&env);
 
         let stored: u32 = env.storage().instance().get(&DataKey::Version).unwrap_or(0);
 
@@ -2058,7 +2070,6 @@ impl LiquifactEscrow {
         escrow
     }
 
-
     pub fn settle(env: Env) -> InvoiceEscrow {
         ensure(
             &env,
@@ -2067,9 +2078,8 @@ impl LiquifactEscrow {
         );
 
         // env.clone(): env is used again after this call for ledger timestamp, storage set, and publish.
-        let mut escrow = Self::get_escrow(env.clone());
+        let mut escrow = Self::load_escrow_require_sme(&env);
 
-        escrow.sme_address.require_auth();
         ensure(&env, escrow.status == 1, EscrowError::SettlementNotFunded);
 
         if escrow.maturity > 0 {
@@ -2109,8 +2119,7 @@ impl LiquifactEscrow {
         );
 
         // env.clone(): env is used again after this call for storage set and publish.
-        let mut escrow = Self::get_escrow(env.clone());
-        escrow.sme_address.require_auth();
+        let mut escrow = Self::load_escrow_require_sme(&env);
 
         ensure(&env, escrow.status == 1, EscrowError::WithdrawalNotFunded);
 
@@ -2281,9 +2290,7 @@ impl LiquifactEscrow {
     }
 
     pub fn update_maturity(env: Env, new_maturity: u64) -> InvoiceEscrow {
-        // env.clone(): env is used again after this call for storage set and publish.
-        let mut escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let mut escrow = Self::load_escrow_require_admin(&env);
 
         ensure(&env, escrow.status == 0, EscrowError::MaturityUpdateNotOpen);
 
@@ -2366,10 +2373,7 @@ impl LiquifactEscrow {
     /// Emits typed [`EscrowError`] codes when the escrow is uninitialized or `new_admin` is the
     /// current admin.
     pub fn propose_admin(env: Env, new_admin: Address) -> Address {
-        // env.clone(): env is used again after this call for storage set and publish.
-        let escrow = Self::get_escrow(env.clone());
-
-        escrow.admin.require_auth();
+        let escrow = Self::load_escrow_require_admin(&env);
 
         ensure(
             &env,
@@ -2447,8 +2451,7 @@ impl LiquifactEscrow {
             EscrowError::LegalHoldBlocksCancelFunding,
         );
 
-        let mut escrow = Self::get_escrow(env.clone());
-        escrow.admin.require_auth();
+        let mut escrow = Self::load_escrow_require_admin(&env);
 
         ensure(&env, escrow.status == 0, EscrowError::CancelFundingNotOpen);
 
@@ -2495,9 +2498,10 @@ impl LiquifactEscrow {
             .instance()
             .get(&DataKey::DistributedPrincipal)
             .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&DataKey::DistributedPrincipal, &prev_distributed.saturating_add(amount));
+        env.storage().instance().set(
+            &DataKey::DistributedPrincipal,
+            &prev_distributed.saturating_add(amount),
+        );
 
         let token_addr: Address = env
             .storage()

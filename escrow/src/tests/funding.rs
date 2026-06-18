@@ -1108,7 +1108,6 @@ fn test_yield_tier_emitted_between_tiers() {
     );
 }
 
-
 #[test]
 fn test_fund_with_commitment_zero_lock_behaves_as_fund() {
     let env = Env::default();
