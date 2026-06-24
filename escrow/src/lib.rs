@@ -243,6 +243,10 @@ pub enum EscrowError {
     TieredSecondDeposit = 108,
     InvestorClaimTimeOverflow = 109,
     FundedAmountOverflow = 110,
+    /// Commitment lock would push `now + committed_lock_secs` past the escrow maturity.
+    /// Reject at deposit time so a settled escrow cannot hold an investor's payout
+    /// claim hostage beyond the point where principal is due.
+    CommitmentLockExceedsMaturity = 111,
 
     LegalHoldBlocksSettlement = 120,
     SettlementNotFunded = 121,
@@ -2032,6 +2036,15 @@ impl LiquifactEscrow {
                 now.checked_add(committed_lock_secs)
                     .unwrap_or_else(|| fail(&env, EscrowError::InvestorClaimTimeOverflow))
             };
+            // Bound: reject if the claim lock would expire after the escrow maturity.
+            // Only constrained when both committed_lock_secs > 0 and maturity > 0.
+            if claim_nb > 0 && escrow.maturity > 0 {
+                ensure(
+                    &env,
+                    claim_nb <= escrow.maturity,
+                    EscrowError::CommitmentLockExceedsMaturity,
+                );
+            }
             Self::set_persistent_investor_claim_not_before(&env, investor.clone(), claim_nb);
         }
 

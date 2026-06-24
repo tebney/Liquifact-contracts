@@ -8,7 +8,7 @@
 )]
 #[allow(unused_imports)]
 use super::{
-    AttestationDigestRevoked, DataKey, EscrowFunded, FundingTargetUpdated, LiquifactEscrow,
+    AttestationDigestRevoked, DataKey, EscrowError, EscrowFunded, FundingTargetUpdated, LiquifactEscrow,
     LiquifactEscrowClient, YieldTier, MAX_ATTESTATION_APPEND_ENTRIES, MAX_DUST_SWEEP_AMOUNT,
     SCHEMA_VERSION,
 };

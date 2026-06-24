@@ -2661,3 +2661,164 @@ fn test_fund_first_deposit_sets_base_yield_and_no_claim_gate() {
         "fund() must not impose a claim gate"
     );
 }
+
+// ── CommitmentLockExceedsMaturity bound ──────────────────────────────────────
+
+// Helper: init an escrow with a specific maturity timestamp.
+fn init_with_maturity(
+    env: &Env,
+    client: &crate::LiquifactEscrowClient<'_>,
+    admin: &soroban_sdk::Address,
+    sme: &soroban_sdk::Address,
+    maturity: u64,
+) {
+    let (token, treasury) = free_addresses(env);
+    client.init(
+        admin,
+        &soroban_sdk::String::from_str(env, "LOCK1"),
+        sme,
+        &10_000i128,
+        &800i64,
+        &maturity,
+        &token,
+        &None,
+        &treasury,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+    );
+}
+
+#[test]
+fn commitment_lock_within_maturity_is_accepted() {
+    // now=1000, maturity=2000, lock=500 → claim_nb=1500 ≤ 2000  ✓
+    let env = Env::default();
+    env.mock_all_auths();
+    let mut li = env.ledger().get();
+    li.timestamp = 1000;
+    env.ledger().set(li);
+    let (client, admin, sme) = setup(&env);
+    let investor = soroban_sdk::Address::generate(&env);
+    init_with_maturity(&env, &client, &admin, &sme, 2000);
+    let escrow = client.fund_with_commitment(&investor, &1_000i128, &500u64);
+    assert_eq!(escrow.status, 0);
+    assert_eq!(client.get_investor_claim_not_before(&investor), 1500u64);
+}
+
+#[test]
+fn commitment_lock_exactly_at_maturity_is_accepted() {
+    // now=1000, maturity=2000, lock=1000 → claim_nb=2000 == maturity  ✓ (inclusive)
+    let env = Env::default();
+    env.mock_all_auths();
+    let mut li = env.ledger().get();
+    li.timestamp = 1000;
+    env.ledger().set(li);
+    let (client, admin, sme) = setup(&env);
+    let investor = soroban_sdk::Address::generate(&env);
+    init_with_maturity(&env, &client, &admin, &sme, 2000);
+    let escrow = client.fund_with_commitment(&investor, &1_000i128, &1000u64);
+    assert_eq!(escrow.status, 0);
+    assert_eq!(client.get_investor_claim_not_before(&investor), 2000u64);
+}
+
+#[test]
+fn commitment_lock_one_second_past_maturity_is_rejected() {
+    // now=1000, maturity=2000, lock=1001 → claim_nb=2001 > 2000  ✗
+    let env = Env::default();
+    env.mock_all_auths();
+    let mut li = env.ledger().get();
+    li.timestamp = 1000;
+    env.ledger().set(li);
+    let (client, admin, sme) = setup(&env);
+    let investor = soroban_sdk::Address::generate(&env);
+    init_with_maturity(&env, &client, &admin, &sme, 2000);
+    assert_contract_error(
+        client.try_fund_with_commitment(&investor, &1_000i128, &1001u64),
+        EscrowError::CommitmentLockExceedsMaturity,
+    );
+}
+
+#[test]
+fn commitment_lock_far_past_maturity_is_rejected() {
+    // now=1000, maturity=2000, lock=5000 → claim_nb=6000 >> 2000  ✗
+    let env = Env::default();
+    env.mock_all_auths();
+    let mut li = env.ledger().get();
+    li.timestamp = 1000;
+    env.ledger().set(li);
+    let (client, admin, sme) = setup(&env);
+    let investor = soroban_sdk::Address::generate(&env);
+    init_with_maturity(&env, &client, &admin, &sme, 2000);
+    assert_contract_error(
+        client.try_fund_with_commitment(&investor, &1_000i128, &5000u64),
+        EscrowError::CommitmentLockExceedsMaturity,
+    );
+}
+
+#[test]
+fn zero_lock_with_maturity_is_always_accepted() {
+    // committed_lock_secs==0 → claim_nb=0, no maturity bound applied
+    let env = Env::default();
+    env.mock_all_auths();
+    let mut li = env.ledger().get();
+    li.timestamp = 1000;
+    env.ledger().set(li);
+    let (client, admin, sme) = setup(&env);
+    let investor = soroban_sdk::Address::generate(&env);
+    init_with_maturity(&env, &client, &admin, &sme, 2000);
+    let escrow = client.fund_with_commitment(&investor, &1_000i128, &0u64);
+    assert_eq!(escrow.status, 0);
+    assert_eq!(client.get_investor_claim_not_before(&investor), 0u64);
+}
+
+#[test]
+fn lock_with_zero_maturity_is_always_accepted() {
+    // maturity==0 means no maturity lock; any lock_secs is fine
+    let env = Env::default();
+    env.mock_all_auths();
+    let mut li = env.ledger().get();
+    li.timestamp = 1000;
+    env.ledger().set(li);
+    let (client, admin, sme) = setup(&env);
+    let investor = soroban_sdk::Address::generate(&env);
+    // maturity = 0 → no bound applied even for a huge lock
+    let (token, treasury) = free_addresses(&env);
+    client.init(
+        &admin,
+        &soroban_sdk::String::from_str(&env, "LOCK2"),
+        &sme,
+        &10_000i128,
+        &800i64,
+        &0u64, // no maturity
+        &token,
+        &None,
+        &treasury,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+    );
+    let escrow = client.fund_with_commitment(&investor, &1_000i128, &9999u64);
+    assert_eq!(escrow.status, 0);
+    assert_eq!(client.get_investor_claim_not_before(&investor), 10999u64);
+}
+
+#[test]
+fn plain_fund_with_maturity_ignores_lock_bound() {
+    // fund() (simple_fund=true) never sets a claim lock; bound is irrelevant
+    let env = Env::default();
+    env.mock_all_auths();
+    let mut li = env.ledger().get();
+    li.timestamp = 1000;
+    env.ledger().set(li);
+    let (client, admin, sme) = setup(&env);
+    let investor = soroban_sdk::Address::generate(&env);
+    init_with_maturity(&env, &client, &admin, &sme, 2000);
+    // fund() should succeed regardless of maturity; it never imposes a lock
+    let escrow = client.fund(&investor, &1_000i128);
+    assert_eq!(escrow.status, 0);
+    assert_eq!(client.get_investor_claim_not_before(&investor), 0u64);
+}
