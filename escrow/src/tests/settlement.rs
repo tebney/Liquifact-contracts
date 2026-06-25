@@ -1661,3 +1661,94 @@ fn test_funding_blocked_after_partial_settle() {
     let late_investor = Address::generate(&env);
     client.fund(&late_investor, &1_000i128);
 }
+
+// ─── snapshot write-once, payout via snapshot, explicit auth ─────────────────
+
+/// The `FundingCloseSnapshot` is written exactly once: a second `partial_settle`
+/// call (or any path that would re-enter) is blocked by the status guard, so the
+/// snapshot values captured at the first close are never overwritten.
+///
+/// Proof: fund to `amount`, partial_settle → snapshot captured; attempt a second
+/// partial_settle → panics because status is now 1, not 0.
+#[test]
+fn test_partial_settle_snapshot_not_overwritten() {
+    let env = Env::default();
+    let (client, admin, sme) = setup(&env);
+    default_init(&client, &env, &admin, &sme);
+
+    let amount = 40_000_000_000i128; // below TARGET
+    let investor = Address::generate(&env);
+    client.fund(&investor, &amount);
+
+    client.partial_settle(&sme);
+
+    // Snapshot must reflect the funded_amount at close time.
+    let snap = client
+        .get_funding_close_snapshot()
+        .expect("snapshot must be present after partial_settle");
+    assert_eq!(snap.total_principal, amount);
+    assert_eq!(snap.funding_target, TARGET);
+
+    // A second call must panic because status is now 1 (no longer open).
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.partial_settle(&sme);
+    }));
+    assert!(r.is_err(), "second partial_settle must panic — snapshot is stable");
+}
+
+/// After `partial_settle` + `settle`, `compute_investor_payout` produces the
+/// correct gross payout derived from the early snapshot (pro-rata on the partial
+/// funded_amount, at the escrow yield_bps).
+#[test]
+fn test_partial_settle_investor_payout_via_snapshot() {
+    let env = Env::default();
+    let (client, admin, sme) = setup(&env);
+    default_init(&client, &env, &admin, &sme);
+
+    // Two investors fund below TARGET so the snapshot records the partial amount.
+    let inv_a = Address::generate(&env);
+    let inv_b = Address::generate(&env);
+    let contribution_a = 30_000_000_000i128;
+    let contribution_b = 20_000_000_000i128;
+    client.fund(&inv_a, &contribution_a);
+    client.fund(&inv_b, &contribution_b);
+
+    client.partial_settle(&sme);
+
+    let snap = client
+        .get_funding_close_snapshot()
+        .expect("snapshot must exist");
+    let total = snap.total_principal; // contribution_a + contribution_b
+    assert_eq!(total, contribution_a + contribution_b);
+
+    // settle() transitions to status 2 so compute_investor_payout can run.
+    client.settle();
+
+    // Manually compute expected payout for inv_a:
+    // yield_bps = 800 (set by default_init), coupon on total principal.
+    let yield_bps = 800i128;
+    let coupon = total * yield_bps / 10_000;
+    let settle_pool = total + coupon;
+    let expected_a = contribution_a * settle_pool / total;
+
+    let actual_a = client.compute_investor_payout(&inv_a);
+    assert_eq!(actual_a, expected_a, "payout for inv_a must match early snapshot");
+
+    let expected_b = contribution_b * settle_pool / total;
+    let actual_b = client.compute_investor_payout(&inv_b);
+    assert_eq!(actual_b, expected_b, "payout for inv_b must match early snapshot");
+}
+
+/// `partial_settle` requires the caller to authorize the transaction.
+/// Clearing all auths with `mock_auths(&[])` must cause a panic.
+#[test]
+#[should_panic]
+fn test_partial_settle_auth_required() {
+    let env = Env::default();
+    let (client, admin, sme) = setup(&env); // sets mock_all_auths
+    default_init(&client, &env, &admin, &sme);
+
+    // Remove all auth mocks — require_auth() will fire.
+    env.mock_auths(&[]);
+    client.partial_settle(&sme);
+}
