@@ -77,6 +77,31 @@ be flagged as superseded while the full history stays on-chain.
 **Panics** if `index >= log.len()` (out of range) or if the index has already been revoked
 (double-revocation guard).
 
+### `is_attestation_revoked(index: u32) → bool`
+
+| Property | Value |
+|---|---|
+| Auth | None — pure read |
+| Storage key | `DataKey::AttestationRevoked(u32)` |
+
+Returns `true` when the given index has been marked revoked. Returns `false` for any index
+that has not been revoked, including indices beyond the current log length.
+
+### `get_revoked_attestation_indices() → Vec<u32>`
+
+| Property | Value |
+|---|---|
+| Auth | None — pure read |
+| Storage key | `DataKey::AttestationRevoked(u32)` (scan) |
+
+Returns a `Vec<u32>` of all indices in the append log that have been revoked, in ascending
+order. Indices align with `get_attestation_append_log` ordering: `revoked[i]` refers to the
+digest at `get_attestation_append_log().get(revoked[i])`.
+
+- **Bounded scan** — iterates at most `MAX_ATTESTATION_APPEND_ENTRIES` (32) slots.
+- Legacy instances with no revocations return an empty `Vec`.
+- No auth required; no state mutation.
+
 ---
 
 ## KYC/KYB operational flows
@@ -300,3 +325,8 @@ Attestation behavior is covered in [`escrow/src/test/attestations.rs`](../escrow
 | `test_revoke_non_admin_panics` | Non-admin revoke is rejected |
 | `test_revoke_preserves_log_entry` | Append log contents unchanged after revocation |
 | `test_revoke_does_not_affect_primary_hash` | Revocation leaves primary hash intact |
+| `test_get_revoked_indices_empty_log` | Empty log returns empty `Vec` |
+| `test_get_revoked_indices_none_revoked` | Non-empty log with no revocations returns empty `Vec` |
+| `test_get_revoked_indices_some_revoked` | Returns exactly the revoked indices |
+| `test_get_revoked_indices_all_revoked` | All entries revoked: full index set returned in order |
+| `test_get_revoked_indices_ordering_matches_log` | Ascending order even when revocations are applied in reverse |

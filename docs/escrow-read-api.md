@@ -185,6 +185,28 @@ Bounded by `MAX_ATTESTATION_APPEND_ENTRIES`.
 
 ---
 
+## `is_attestation_revoked(index: u32) → bool`
+
+**Storage key:** `DataKey::AttestationRevoked(u32)`
+
+Returns `true` when the given append-log index has been marked revoked via
+`revoke_attestation_digest`. Returns `false` for any index that has not been revoked,
+including indices beyond the current log length.
+
+---
+
+## `get_revoked_attestation_indices() → Vec<u32>`
+
+**Storage key:** `DataKey::AttestationRevoked(u32)` (scan)
+
+Returns all revoked append-log indices as a `Vec<u32>` in ascending order. Indices align
+with `get_attestation_append_log` ordering.
+
+- Scans `0..get_attestation_append_log().len()` — bounded by `MAX_ATTESTATION_APPEND_ENTRIES` (32).
+- Legacy instances with no revocations return an empty `Vec`.
+
+---
+
 ## `get_escrow_summary() → EscrowSummary`
 
 Bundles multiple read-only values in a single host invocation, optimizing read latency and gas efficiency for off-chain indexers and frontend rendering.

@@ -1727,6 +1727,35 @@ impl LiquifactEscrow {
             .unwrap_or(false)
     }
 
+    /// Returns the indices of all revoked entries in the attestation append log.
+    ///
+    /// Scans `0..get_attestation_append_log().len()` and collects every index `i` where
+    /// [`DataKey::AttestationRevoked(i)`] is set. Indices align with the ordering of
+    /// [`get_attestation_append_log`].
+    ///
+    /// - **Pure read** — no auth required, no state mutation.
+    /// - **Bounded** — the scan is capped by the log length, which is at most
+    ///   [`MAX_ATTESTATION_APPEND_ENTRIES`] (32).
+    /// - Legacy instances with no revocations return an empty [`Vec`].
+    pub fn get_revoked_attestation_indices(env: Env) -> Vec<u32> {
+        let log: Vec<BytesN<32>> = env
+            .storage()
+            .instance()
+            .get(&DataKey::AttestationAppendLog)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut revoked = Vec::new(&env);
+        for i in 0..log.len() {
+            if env
+                .storage()
+                .instance()
+                .has(&DataKey::AttestationRevoked(i))
+            {
+                revoked.push_back(i);
+            }
+        }
+        revoked
+    }
+
     pub fn is_investor_claimed(env: Env, investor: Address) -> bool {
         Self::get_persistent_investor_claimed(&env, investor)
     }
