@@ -326,3 +326,79 @@ fn test_revoke_does_not_affect_primary_hash() {
     client.revoke_attestation_digest(&0);
     assert_eq!(client.get_primary_attestation_hash(), Some(primary));
 }
+
+// ---------------------------------------------------------------------------
+// get_revoked_attestation_indices — enumeration view
+// ---------------------------------------------------------------------------
+
+/// Empty log: returns empty Vec.
+#[test]
+fn test_get_revoked_indices_empty_log() {
+    let env = Env::default();
+    let (client, _) = setup_with_init(&env);
+    assert_eq!(client.get_revoked_attestation_indices().len(), 0);
+}
+
+/// Log with entries but none revoked: returns empty Vec.
+#[test]
+fn test_get_revoked_indices_none_revoked() {
+    let env = Env::default();
+    let (client, _) = setup_with_init(&env);
+    for i in 0u8..3 {
+        client.append_attestation_digest(&digest(&env, i));
+    }
+    assert_eq!(client.get_revoked_attestation_indices().len(), 0);
+}
+
+/// Revoke one index; result contains exactly that index.
+#[test]
+fn test_get_revoked_indices_some_revoked() {
+    let env = Env::default();
+    let (client, _) = setup_with_init(&env);
+    for i in 0u8..4 {
+        client.append_attestation_digest(&digest(&env, i));
+    }
+    client.revoke_attestation_digest(&1);
+    client.revoke_attestation_digest(&3);
+    let revoked = client.get_revoked_attestation_indices();
+    assert_eq!(revoked.len(), 2);
+    assert_eq!(revoked.get(0).unwrap(), 1u32);
+    assert_eq!(revoked.get(1).unwrap(), 3u32);
+}
+
+/// All entries revoked: result contains all indices in order.
+#[test]
+fn test_get_revoked_indices_all_revoked() {
+    let env = Env::default();
+    let (client, _) = setup_with_init(&env);
+    for i in 0u8..5 {
+        client.append_attestation_digest(&digest(&env, i));
+    }
+    for i in 0u32..5 {
+        client.revoke_attestation_digest(&i);
+    }
+    let revoked = client.get_revoked_attestation_indices();
+    assert_eq!(revoked.len(), 5);
+    for i in 0u32..5 {
+        assert_eq!(revoked.get(i).unwrap(), i);
+    }
+}
+
+/// Ordering: indices appear in ascending order matching the log.
+#[test]
+fn test_get_revoked_indices_ordering_matches_log() {
+    let env = Env::default();
+    let (client, _) = setup_with_init(&env);
+    for i in 0u8..5 {
+        client.append_attestation_digest(&digest(&env, i));
+    }
+    // Revoke in reverse order to confirm output is still ascending.
+    client.revoke_attestation_digest(&4);
+    client.revoke_attestation_digest(&2);
+    client.revoke_attestation_digest(&0);
+    let revoked = client.get_revoked_attestation_indices();
+    assert_eq!(revoked.len(), 3);
+    assert_eq!(revoked.get(0).unwrap(), 0u32);
+    assert_eq!(revoked.get(1).unwrap(), 2u32);
+    assert_eq!(revoked.get(2).unwrap(), 4u32);
+}
